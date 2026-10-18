@@ -24,8 +24,9 @@ class LUTRegularizer(nn.Module):
         for axis, shape in ((4, (1, 1, 1, 1, -1)), (3, (1, 1, 1, -1, 1)), (2, (1, 1, -1, 1, 1))):
             # LUT value at lattice i minus value at i + 1 along this colour axis
             diff = luts.narrow(axis, 0, luts.shape[axis] - 1) - luts.narrow(axis, 1, luts.shape[axis] - 1)
-            tv = tv + (diff.pow(2) * w.view(shape)).mean()
-            mn = mn + F.relu(diff).mean()
+            # mean per LUT, summed over LUTs, as in the reference code
+            tv = tv + (diff.pow(2) * w.view(shape)).flatten(1).mean(1).sum()
+            mn = mn + F.relu(diff).flatten(1).mean(1).sum()
         return tv, mn
 
 

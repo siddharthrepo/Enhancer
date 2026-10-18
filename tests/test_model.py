@@ -71,3 +71,14 @@ def test_identity_init_returns_input():
     out, weights = model(img)
     assert torch.allclose(weights, torch.tensor([[1.0, 0.0, 0.0]] * 2))
     assert torch.allclose(out, img, atol=1e-5)
+
+
+def test_every_lut_gets_gradient_at_init():
+    # regression: with weights [1, 0, 0] and zero LUTs 1..N, those LUTs never received gradient
+    model = AdaptiveLUT()
+    src = torch.rand(1, 3, 64, 64)
+    out, _ = model(src)
+    torch.mean((out - src**0.5) ** 2).backward()
+    # each LUT's weight must be learnable; once it moves off 0 the LUT itself gets gradient
+    head_grad = model.predictor.head[1].weight.grad.flatten(1).norm(dim=1)
+    assert (head_grad > 0).all()

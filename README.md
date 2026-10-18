@@ -12,7 +12,9 @@ lut/model.py       weight-predictor CNN + LUT bank
 lut/losses.py      MSE + smoothness (3D TV) + monotonicity regularizers
 lut/data.py        FiveK 480p loader + paper augmentations
 lut/metrics.py     PSNR, SSIM, deltaE (CIE76), on 8-bit images
+lut/baselines.py   identity, gray-world, tone curves, fixed LUT, per-image oracle LUT
 train.py / eval.py resumable training and test-split evaluation
+baselines.py       scores the baselines on the test split
 kaggle/            notebook for training on Kaggle GPUs
 tests/             lookup-vs-reference, shapes, regularizers, train/resume smoke test
 ```
@@ -42,5 +44,6 @@ uv pip install --python .venv/bin/python numpy pillow scikit-image tqdm pytest o
 
 ### Deviations from the paper
 
-- **Identity-start weight predictor.** The final layer is initialised so the predicted weights start at `[1, 0, 0]`, which makes the model start as the identity. This follows AdaInt. With the paper's random init, a quick run on real FiveK pairs started at test MSE 0.40, ten times worse than leaving the image unchanged (0.034), and had not settled after 320 steps. The identity start beat the unchanged image within 40 steps. `--paper-init` restores the original init.
+- **Identity-start weight predictor.** The final layer starts at weights `[1, 0, 0]`, so the untrained model returns its input. LUTs 1..N start as tiny random noise (std 1e-3) instead of zero. Without that, a zero LUT and its zero weight both get zero gradient and stay at zero forever. The first full run hit exactly this: it trained only one LUT and plateaued at 23.5 dB from epoch 40. With the paper's random init, a quick run on real FiveK pairs started at test MSE 0.40, ten times worse than leaving the image unchanged (0.034). `--paper-init` restores the original init.
+- **Regularizers and CNN match the reference code.** Smoothness and monotonicity are averaged per LUT and summed over the LUTs. The last conv block has no InstanceNorm.
 - **Test split has 498 images, not 500.** The released `test.txt` omits `a0160` and `a2952`.

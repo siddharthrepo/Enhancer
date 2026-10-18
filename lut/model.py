@@ -11,12 +11,11 @@ import torch.nn.functional as F
 from .trilinear import apply_lut, identity_lut
 
 
-def _block(cin: int, cout: int) -> list[nn.Module]:
-    return [
-        nn.Conv2d(cin, cout, 3, stride=2, padding=1),
-        nn.LeakyReLU(0.2),
-        nn.InstanceNorm2d(cout, affine=True),
-    ]
+def _block(cin: int, cout: int, norm: bool = True) -> list[nn.Module]:
+    layers = [nn.Conv2d(cin, cout, 3, stride=2, padding=1), nn.LeakyReLU(0.2)]
+    if norm:
+        layers.append(nn.InstanceNorm2d(cout, affine=True))
+    return layers
 
 
 class WeightPredictor(nn.Module):
@@ -27,13 +26,13 @@ class WeightPredictor(nn.Module):
         self.thumb = thumb
         chans = [3, 16, 32, 64, 128, 128]
         layers = []
-        for cin, cout in zip(chans[:-1], chans[1:]):
-            layers += _block(cin, cout)
+        for i, (cin, cout) in enumerate(zip(chans[:-1], chans[1:])):
+            layers += _block(cin, cout, norm=i < len(chans) - 2)  # reference code: no norm on the last block
         self.features = nn.Sequential(*layers)
         self.head = nn.Sequential(nn.Dropout(0.5), nn.Conv2d(128, n_luts, thumb // 32))
         if identity_init:
-            # start at weights [1, 0, ...] so the fused LUT is the identity (as in AdaInt). The paper's
-            # default init gives random, often negative weights and a much worse-than-input start.
+            # start at weights [1, 0, ...] so the fused LUT is the identity. The paper's default init
+            # gives random, often negative weights and a much worse-than-input start.
             nn.init.zeros_(self.head[1].weight)
             nn.init.zeros_(self.head[1].bias)
             self.head[1].bias.data[0] = 1.0
@@ -49,6 +48,10 @@ class AdaptiveLUT(nn.Module):
         self.dim = dim
         luts = torch.zeros(n_luts, 3, dim, dim, dim)
         luts[0] = identity_lut(dim)  # paper init: one identity LUT, the rest zero
+        if identity_init:
+            # With weights [1, 0, ...] a zero LUT and its zero weight both get zero gradient and never
+            # move, so the other LUTs need a small nonzero start. Output is still the identity at init.
+            luts[1:] = 1e-3 * torch.randn_like(luts[1:])
         self.luts = nn.Parameter(luts)
         self.predictor = WeightPredictor(n_luts, identity_init=identity_init)
 
