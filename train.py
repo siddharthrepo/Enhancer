@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 from lut.data import FiveK
 from lut.evaluate import evaluate
@@ -36,6 +37,11 @@ def parse_args():
     p.add_argument("--limit", type=int, default=None, help="use only N train/test images (smoke tests)")
     p.add_argument("--seed", type=int, default=0)
     return p.parse_args()
+
+
+def _fmt(seconds: float) -> str:
+    h, m = divmod(int(seconds) // 60, 60)
+    return f"{h}h{m:02d}m"
 
 
 def main():
@@ -71,10 +77,12 @@ def main():
     print(f"device={device} train={len(train_set)} test={len(test_set)} "
           f"params={sum(p.numel() for p in model.predictor.parameters()) / 1e3:.0f}K (CNN)")
     log = open(out / "log.jsonl", "a")
+    run_start = time.time()
     for epoch in range(start_epoch, args.epochs):
         model.train()
         t0, sums, n = time.time(), {"mse": 0.0, "tv": 0.0, "mn": 0.0}, 0
-        for src, tgt, _ in loader:
+        bar = tqdm(loader, desc=f"epoch {epoch + 1}/{args.epochs}", unit="it", mininterval=5, dynamic_ncols=True)
+        for src, tgt, _ in bar:
             src, tgt = src.to(device, non_blocking=True), tgt.to(device, non_blocking=True)
             pred, w = model(src)
             loss, parts = lut_loss(pred, tgt, w, model.luts, reg, args.lambda_s, args.lambda_m)
@@ -84,6 +92,9 @@ def main():
             for k in sums:
                 sums[k] += parts[k]
             n += 1
+            if n % 50 == 0:
+                bar.set_postfix(mse=f"{sums['mse'] / n:.5f}")
+        bar.close()
         rec = {"epoch": epoch, "time_s": round(time.time() - t0, 1), **{k: v / max(n, 1) for k, v in sums.items()}}
 
         last_epoch = epoch == args.epochs - 1
@@ -96,7 +107,11 @@ def main():
                            out / "best.pt")
         torch.save({"model": model.state_dict(), "opt": opt.state_dict(), "epoch": epoch,
                     "best_psnr": best_psnr, "args": vars(args)}, out / "last.pt")
-        print(json.dumps(rec), flush=True)
+        done = epoch + 1 - start_epoch
+        eta = (time.time() - run_start) / done * (args.epochs - epoch - 1)
+        scores = f" | psnr {rec['psnr']:.2f} ssim {rec['ssim']:.3f} dE {rec['delta_e']:.2f}" if "psnr" in rec else ""
+        print(f"epoch {epoch + 1}/{args.epochs} | mse {rec['mse']:.5f} | {rec['time_s']:.0f}s{scores} "
+              f"| best psnr {best_psnr:.2f} | ETA {_fmt(eta)}", flush=True)
         log.write(json.dumps(rec) + "\n")
         log.flush()
 

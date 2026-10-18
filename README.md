@@ -22,7 +22,7 @@ tests/             lookup-vs-reference, shapes, regularizers, train/resume smoke
 ```bash
 uv venv .venv
 uv pip install --python .venv/bin/python torch --index-url https://download.pytorch.org/whl/cpu
-uv pip install --python .venv/bin/python numpy pillow scikit-image pytest onnx onnxruntime
+uv pip install --python .venv/bin/python numpy pillow scikit-image tqdm pytest onnx onnxruntime
 .venv/bin/python -m pytest -q
 ```
 

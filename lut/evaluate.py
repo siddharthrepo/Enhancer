@@ -3,6 +3,7 @@ from pathlib import Path
 import numpy as np
 import torch
 from PIL import Image
+from tqdm import tqdm
 
 from .metrics import all_metrics, to_uint8
 
@@ -12,7 +13,7 @@ def evaluate(model, dataset, device, save_dir: Path | None = None) -> tuple[dict
     """Run the model on every image of `dataset` at native resolution. Returns (means, per-image rows)."""
     model.eval()
     rows = []
-    for i in range(len(dataset)):
+    for i in tqdm(range(len(dataset)), desc="eval", unit="img", leave=False, mininterval=5, dynamic_ncols=True):
         src, tgt, name = dataset[i]
         out, _ = model(src[None].to(device))
         out = out[0].clamp(0, 1).cpu()
