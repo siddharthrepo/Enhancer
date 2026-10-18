@@ -1,0 +1,13 @@
+[project]
+name = "adaptive-3d-lut"
+version = "0.1.0"
+description = "Image-adaptive 3D LUT photo enhancer (colour and tone), PyTorch -> ONNX -> Go"
+requires-python = ">=3.10"
+dependencies = ["torch", "numpy", "pillow", "scikit-image"]
+
+[project.optional-dependencies]
+dev = ["pytest", "onnx", "onnxruntime"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
