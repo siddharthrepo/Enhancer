@@ -63,3 +63,11 @@ def test_train_and_eval_smoke(tmp_path):
     subprocess.run([sys.executable, "eval.py", "--data", str(data), "--ckpt", str(run / "best.pt")],
                    cwd=ROOT, check=True)
     assert (run / "metrics.json").exists()
+
+
+def test_identity_init_returns_input():
+    model = AdaptiveLUT().train()  # dropout active: zero head weights make it irrelevant at init
+    img = torch.rand(2, 3, 40, 60)
+    out, weights = model(img)
+    assert torch.allclose(weights, torch.tensor([[1.0, 0.0, 0.0]] * 2))
+    assert torch.allclose(out, img, atol=1e-5)

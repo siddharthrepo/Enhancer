@@ -6,3 +6,5 @@ runs/
 data/
 *.pt
 *.onnx
+creds.txt
+kaggle.json

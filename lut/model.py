@@ -22,7 +22,7 @@ def _block(cin: int, cout: int) -> list[nn.Module]:
 class WeightPredictor(nn.Module):
     """5 conv blocks (16/32/64/128/128) -> dropout -> 8x8 conv acting as FC. ~269K params for N=3."""
 
-    def __init__(self, n_luts: int = 3, thumb: int = 256):
+    def __init__(self, n_luts: int = 3, thumb: int = 256, identity_init: bool = True):
         super().__init__()
         self.thumb = thumb
         chans = [3, 16, 32, 64, 128, 128]
@@ -31,6 +31,12 @@ class WeightPredictor(nn.Module):
             layers += _block(cin, cout)
         self.features = nn.Sequential(*layers)
         self.head = nn.Sequential(nn.Dropout(0.5), nn.Conv2d(128, n_luts, thumb // 32))
+        if identity_init:
+            # start at weights [1, 0, ...] so the fused LUT is the identity (as in AdaInt). The paper's
+            # default init gives random, often negative weights and a much worse-than-input start.
+            nn.init.zeros_(self.head[1].weight)
+            nn.init.zeros_(self.head[1].bias)
+            self.head[1].bias.data[0] = 1.0
 
     def forward(self, img: torch.Tensor) -> torch.Tensor:
         x = F.interpolate(img, size=(self.thumb, self.thumb), mode="bilinear", align_corners=False)
@@ -38,13 +44,13 @@ class WeightPredictor(nn.Module):
 
 
 class AdaptiveLUT(nn.Module):
-    def __init__(self, n_luts: int = 3, dim: int = 33):
+    def __init__(self, n_luts: int = 3, dim: int = 33, identity_init: bool = True):
         super().__init__()
         self.dim = dim
         luts = torch.zeros(n_luts, 3, dim, dim, dim)
         luts[0] = identity_lut(dim)  # paper init: one identity LUT, the rest zero
         self.luts = nn.Parameter(luts)
-        self.predictor = WeightPredictor(n_luts)
+        self.predictor = WeightPredictor(n_luts, identity_init=identity_init)
 
     def fuse(self, img: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """Return (fused LUT (B, 3, D, D, D), weights (B, N))."""

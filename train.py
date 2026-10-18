@@ -36,6 +36,9 @@ def parse_args():
     p.add_argument("--workers", type=int, default=4)
     p.add_argument("--limit", type=int, default=None, help="use only N train/test images (smoke tests)")
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--paper-init", action="store_true", help="random weight-predictor init as in the paper")
+    p.add_argument("--max-hours", type=float, default=None,
+                   help="stop cleanly after this many hours (e.g. 11 on Kaggle); re-run to resume")
     return p.parse_args()
 
 
@@ -62,7 +65,7 @@ def main():
     loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, num_workers=args.workers,
                         pin_memory=device.type == "cuda", drop_last=True, persistent_workers=args.workers > 0)
 
-    model = AdaptiveLUT(args.n_luts, args.lut_dim).to(device)
+    model = AdaptiveLUT(args.n_luts, args.lut_dim, identity_init=not args.paper_init).to(device)
     reg = LUTRegularizer(args.lut_dim).to(device)
     opt = torch.optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.999))
     start_epoch, best_psnr = 0, -1.0
@@ -114,6 +117,9 @@ def main():
               f"| best psnr {best_psnr:.2f} | ETA {_fmt(eta)}", flush=True)
         log.write(json.dumps(rec) + "\n")
         log.flush()
+        if args.max_hours and time.time() - run_start > args.max_hours * 3600 and not last_epoch:
+            print(f"time budget of {args.max_hours}h reached after epoch {epoch + 1}; re-run to resume", flush=True)
+            break
 
 
 if __name__ == "__main__":

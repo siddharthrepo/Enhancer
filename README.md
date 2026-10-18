@@ -28,8 +28,8 @@ uv pip install --python .venv/bin/python numpy pillow scikit-image tqdm pytest o
 
 ## Training on Kaggle
 
-1. Push this repo to GitHub, then set `REPO` in `kaggle/train_fivek.ipynb`.
-2. Import the notebook into Kaggle. Turn on GPU (T4) and Internet, and add the dataset
+1. Push to GitHub (`REPO` in `kaggle/train_fivek.ipynb` points at github.com/siddharthrepo/Enhancer).
+2. Import the notebook into Kaggle. Turn on GPU (T4) and Internet, add the notebook secret `KAGGLE_API_TOKEN`; the notebook downloads the dataset
    [`jesucristo/zeng-3lut-fivek-480p`](https://www.kaggle.com/datasets/jesucristo/zeng-3lut-fivek-480p), a mirror of the authors' 480p release.
 3. Run all cells. `train.py` writes `last.pt` every epoch and resumes automatically. If a session hits Kaggle's 12h limit, save the output as a dataset version, attach it, and set `RESUME_FROM`.
 
@@ -39,3 +39,8 @@ uv pip install --python .venv/bin/python numpy pillow scikit-image tqdm pytest o
 |---|---|---|---|
 | Paper | 25.21 | 0.922 | 7.61 |
 | Ours | – | – | – |
+
+### Deviations from the paper
+
+- **Identity-start weight predictor.** The final layer is initialised so the predicted weights start at `[1, 0, 0]`, which makes the model start as the identity. This follows AdaInt. With the paper's random init, a quick run on real FiveK pairs started at test MSE 0.40, ten times worse than leaving the image unchanged (0.034), and had not settled after 320 steps. The identity start beat the unchanged image within 40 steps. `--paper-init` restores the original init.
+- **Test split has 498 images, not 500.** The released `test.txt` omits `a0160` and `a2952`.
