@@ -82,3 +82,15 @@ def test_every_lut_gets_gradient_at_init():
     # each LUT's weight must be learnable; once it moves off 0 the LUT itself gets gradient
     head_grad = model.predictor.head[1].weight.grad.flatten(1).norm(dim=1)
     assert (head_grad > 0).all()
+
+
+def test_fast_psnr_matches_full_eval(tmp_path):
+    from lut.data import FiveK
+    from lut.evaluate import FastPSNR, evaluate
+
+    _fake_fivek(tmp_path, n_train=2, n_test=4)
+    test_set = FiveK(tmp_path, "test")
+    torch.manual_seed(0)
+    model = AdaptiveLUT(identity_init=False)
+    full, _ = evaluate(model, test_set, "cpu")
+    assert abs(FastPSNR(test_set)(model, "cpu") - full["psnr"]) < 1e-4

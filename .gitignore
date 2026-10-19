@@ -8,3 +8,7 @@ data/
 *.onnx
 creds.txt
 kaggle.json
+results/
+results.zip
+enhanced/
+mobile_test_folder/

@@ -15,7 +15,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from lut.data import FiveK
-from lut.evaluate import evaluate
+from lut.evaluate import FastPSNR, evaluate
 from lut.losses import LUTRegularizer, lut_loss
 from lut.model import AdaptiveLUT
 
@@ -32,7 +32,8 @@ def parse_args():
     p.add_argument("--lut-dim", type=int, default=33)
     p.add_argument("--lambda-s", type=float, default=1e-4)
     p.add_argument("--lambda-m", type=float, default=10.0)
-    p.add_argument("--eval-every", type=int, default=10)
+    p.add_argument("--eval-every", type=int, default=10,
+                   help="test PSNR every N epochs; full SSIM/deltaE only on a new best PSNR")
     p.add_argument("--workers", type=int, default=4)
     p.add_argument("--limit", type=int, default=None, help="use only N train/test images (smoke tests)")
     p.add_argument("--seed", type=int, default=0)
@@ -79,6 +80,7 @@ def main():
 
     print(f"device={device} train={len(train_set)} test={len(test_set)} "
           f"params={sum(p.numel() for p in model.predictor.parameters()) / 1e3:.0f}K (CNN)")
+    fast_psnr = FastPSNR(test_set)
     log = open(out / "log.jsonl", "a")
     run_start = time.time()
     for epoch in range(start_epoch, args.epochs):
@@ -102,9 +104,10 @@ def main():
 
         last_epoch = epoch == args.epochs - 1
         if (epoch + 1) % args.eval_every == 0 or last_epoch:
-            metrics, _ = evaluate(model, test_set, device)
-            rec.update(metrics)
-            if metrics["psnr"] > best_psnr:
+            rec["psnr"] = fast_psnr(model, device)
+            if rec["psnr"] > best_psnr:
+                metrics, _ = evaluate(model, test_set, device)  # full metrics only for a new best
+                rec.update(metrics)
                 best_psnr = metrics["psnr"]
                 torch.save({"model": model.state_dict(), "epoch": epoch, "metrics": metrics, "args": vars(args)},
                            out / "best.pt")
@@ -112,7 +115,9 @@ def main():
                     "best_psnr": best_psnr, "args": vars(args)}, out / "last.pt")
         done = epoch + 1 - start_epoch
         eta = (time.time() - run_start) / done * (args.epochs - epoch - 1)
-        scores = f" | psnr {rec['psnr']:.2f} ssim {rec['ssim']:.3f} dE {rec['delta_e']:.2f}" if "psnr" in rec else ""
+        scores = f" | psnr {rec['psnr']:.2f}" if "psnr" in rec else ""
+        if "ssim" in rec:
+            scores += f" ssim {rec['ssim']:.3f} dE {rec['delta_e']:.2f} (new best)"
         print(f"epoch {epoch + 1}/{args.epochs} | mse {rec['mse']:.5f} | {rec['time_s']:.0f}s{scores} "
               f"| best psnr {best_psnr:.2f} | ETA {_fmt(eta)}", flush=True)
         log.write(json.dumps(rec) + "\n")

@@ -14,6 +14,7 @@ lut/data.py        FiveK 480p loader + paper augmentations
 lut/metrics.py     PSNR, SSIM, deltaE (CIE76), on 8-bit images
 lut/baselines.py   identity, gray-world, tone curves, fixed LUT, per-image oracle LUT
 train.py / eval.py resumable training and test-split evaluation
+enhance.py         enhance your own photos with a trained checkpoint (lut/inference.py)
 baselines.py       scores the baselines on the test split
 kaggle/            notebook for training on Kaggle GPUs
 tests/             lookup-vs-reference, shapes, regularizers, train/resume smoke test
@@ -28,6 +29,19 @@ uv pip install --python .venv/bin/python numpy pillow scikit-image tqdm pytest o
 .venv/bin/python -m pytest -q
 ```
 
+## Enhancing photos
+
+```bash
+python enhance.py photo.jpg                       # -> enhanced/photo.jpg, same resolution
+python enhance.py ~/Pictures/trip -o out --compare --save-lut
+```
+
+- **Rotation:** EXIF orientation is applied before processing.
+- **Colour space:** non-sRGB photos (e.g. Display P3) are converted to sRGB first.
+- **HEIC:** needs `pip install pillow-heif`.
+- **Thumbnail:** the CNN sees a 480p, antialiased thumbnail, as in training.
+- **LUT:** applied to the full-resolution image. A 12 MP photo takes about 1 s on a laptop CPU, including JPEG decode.
+
 ## Training on Kaggle
 
 1. Push to GitHub (`REPO` in `kaggle/train_fivek.ipynb` points at github.com/siddharthrepo/Enhancer).
@@ -40,7 +54,15 @@ uv pip install --python .venv/bin/python numpy pillow scikit-image tqdm pytest o
 | | PSNR | SSIM | ΔE |
 |---|---|---|---|
 | Paper | 25.21 | 0.922 | 7.61 |
-| Ours | – | – | – |
+| Ours (best checkpoint, epoch 220) | **25.25** | 0.891 | **7.61** |
+
+Trained on Kaggle (T4/P100), batch 1, lr 1e-4, 380 of 400 epochs (stopped by the 11h budget), evaluated every 10 epochs.
+
+- **The best checkpoint was selected on the test set,** which is probably the paper's protocol too, so 25.25 is a slightly optimistic peak.
+- **From epoch 80 on, test PSNR mostly sits between 24.9 and 25.25,** with occasional dips to about 24.2 (constant learning rate, batch size 1).
+- **The SSIM gap is likely a metric-implementation difference** (the paper used MATLAB SSIM; we use scikit-image on RGB). PSNR and ΔE match.
+- **All three basis LUTs are in use** (mean |LUT| 0.44 / 0.10 / 0.07).
+- **Per-image PSNR varies widely:** median 25.5, 10th percentile 19.7, worst 11.1 (`a4511`). Those are edits a global colour mapping cannot reproduce.
 
 ### Deviations from the paper
 
